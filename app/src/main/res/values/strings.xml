@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">DreamTrack</string>
+    <string name="accessibility_service_desc">Enables DreamTrack distraction shield to detect and block time-wasting apps during active student focus sessions.</string>
+</resources>

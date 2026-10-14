@@ -1,0 +1,81 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(docId) {
+      return docId is string && docId.size() > 0 && docId.size() <= 128 && docId.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidStudentProfile(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.dreamTitle is string && data.dreamTitle.size() > 0 && data.dreamTitle.size() <= 150 &&
+             (!('dreamDescription' in data) || (data.dreamDescription is string && data.dreamDescription.size() <= 2000)) &&
+             (!('targetYear' in data) || data.targetYear is int) &&
+             (!('dailyTargetHours' in data) || (data.dailyTargetHours is number && data.dailyTargetHours >= 0 && data.dailyTargetHours <= 24)) &&
+             (!('currentStreak' in data) || data.currentStreak is int) &&
+             (!('longestStreak' in data) || data.longestStreak is int) &&
+             (!('totalFocusMinutes' in data) || data.totalFocusMinutes is int) &&
+             (!('completedMilestonesCount' in data) || data.completedMilestonesCount is int) &&
+             (!('isCloudSyncEnabled' in data) || data.isCloudSyncEnabled is bool) &&
+             (!('fcmToken' in data) || (data.fcmToken is string && data.fcmToken.size() <= 500)) &&
+             (!('updatedAt' in data) || data.updatedAt is number || data.updatedAt is timestamp);
+    }
+
+    function isValidGoal(data) {
+      return data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+             data.category is string && data.category.size() <= 100 &&
+             (!('priority' in data) || (data.priority is string && data.priority.size() <= 50)) &&
+             (!('deadlineDate' in data) || (data.deadlineDate is string && data.deadlineDate.size() <= 50)) &&
+             (!('progressPercentage' in data) || (data.progressPercentage is int && data.progressPercentage >= 0 && data.progressPercentage <= 100)) &&
+             (!('milestonesJson' in data) || (data.milestonesJson is string && data.milestonesJson.size() <= 5000)) &&
+             (!('isCompleted' in data) || data.isCompleted is bool) &&
+             (!('colorHex' in data) || data.colorHex is int) &&
+             (!('updatedAt' in data) || data.updatedAt is number || data.updatedAt is timestamp);
+    }
+
+    function isValidRoutine(data) {
+      return data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+             data.scheduledTime is string && data.scheduledTime.size() <= 50 &&
+             (!('category' in data) || (data.category is string && data.category.size() <= 100)) &&
+             (!('durationMinutes' in data) || (data.durationMinutes is int && data.durationMinutes >= 0 && data.durationMinutes <= 1440)) &&
+             (!('isCompletedToday' in data) || data.isCompletedToday is bool) &&
+             (!('alarmEnabled' in data) || data.alarmEnabled is bool) &&
+             (!('daysOfWeek' in data) || (data.daysOfWeek is string && data.daysOfWeek.size() <= 100)) &&
+             (!('reminderType' in data) || (data.reminderType is string && data.reminderType.size() <= 50)) &&
+             (!('psychologicalTone' in data) || (data.psychologicalTone is string && data.psychologicalTone.size() <= 100)) &&
+             (!('alarmSound' in data) || (data.alarmSound is string && data.alarmSound.size() <= 100)) &&
+             (!('snoozeMinutes' in data) || (data.snoozeMinutes is int && data.snoozeMinutes >= 0 && data.snoozeMinutes <= 120)) &&
+             (!('customPsychologicalMessage' in data) || (data.customPsychologicalMessage is string && data.customPsychologicalMessage.size() <= 1000)) &&
+             (!('updatedAt' in data) || data.updatedAt is number || data.updatedAt is timestamp);
+    }
+
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidStudentProfile(request.resource.data);
+      allow update: if isOwner(userId) && isValidStudentProfile(request.resource.data);
+      allow delete: if isOwner(userId);
+
+      match /goals/{goalId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(goalId) && isValidGoal(request.resource.data);
+        allow update: if isOwner(userId) && isValidId(goalId) && isValidGoal(request.resource.data);
+        allow delete: if isOwner(userId) && isValidId(goalId);
+      }
+
+      match /routines/{routineId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(routineId) && isValidRoutine(request.resource.data);
+        allow update: if isOwner(userId) && isValidId(routineId) && isValidRoutine(request.resource.data);
+        allow delete: if isOwner(userId) && isValidId(routineId);
+      }
+    }
+  }
+}

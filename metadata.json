@@ -1,0 +1,6 @@
+{
+  "name": "DreamTrack",
+  "description": "AI-powered student productivity app with Gemini Problem Solver, AI Study Planner & Curriculum Generator, Goal Milestones, Daily Routines, and Distraction Shield.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

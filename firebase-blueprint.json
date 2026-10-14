@@ -1,0 +1,79 @@
+{
+  "entities": {
+    "StudentProfile": {
+      "title": "StudentProfile",
+      "description": "Student profile containing dream career, targets, and focus stats",
+      "type": "object",
+      "properties": {
+        "id": { "type": "integer" },
+        "name": { "type": "string" },
+        "dreamTitle": { "type": "string" },
+        "dreamDescription": { "type": "string" },
+        "targetYear": { "type": "integer" },
+        "dailyTargetHours": { "type": "number" },
+        "currentStreak": { "type": "integer" },
+        "longestStreak": { "type": "integer" },
+        "totalFocusMinutes": { "type": "integer" },
+        "completedMilestonesCount": { "type": "integer" },
+        "isCloudSyncEnabled": { "type": "boolean" },
+        "fcmToken": { "type": "string" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["name", "dreamTitle"]
+    },
+    "GoalItem": {
+      "title": "GoalItem",
+      "description": "Long-term goals and milestones for the student's dream",
+      "type": "object",
+      "properties": {
+        "id": { "type": "integer" },
+        "title": { "type": "string" },
+        "category": { "type": "string" },
+        "priority": { "type": "string" },
+        "deadlineDate": { "type": "string" },
+        "progressPercentage": { "type": "integer" },
+        "milestonesJson": { "type": "string" },
+        "isCompleted": { "type": "boolean" },
+        "colorHex": { "type": "integer" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["title", "category"]
+    },
+    "RoutineItem": {
+      "title": "RoutineItem",
+      "description": "Daily routine habit with dual reminder customization",
+      "type": "object",
+      "properties": {
+        "id": { "type": "integer" },
+        "title": { "type": "string" },
+        "scheduledTime": { "type": "string" },
+        "category": { "type": "string" },
+        "durationMinutes": { "type": "integer" },
+        "isCompletedToday": { "type": "boolean" },
+        "alarmEnabled": { "type": "boolean" },
+        "daysOfWeek": { "type": "string" },
+        "reminderType": { "type": "string" },
+        "psychologicalTone": { "type": "string" },
+        "alarmSound": { "type": "string" },
+        "snoozeMinutes": { "type": "integer" },
+        "customPsychologicalMessage": { "type": "string" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["title", "scheduledTime"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/StudentProfile" },
+      "description": "User profile document storing personal study configuration and streak data"
+    },
+    "/users/{userId}/goals/{goalId}": {
+      "schema": { "$ref": "#/entities/GoalItem" },
+      "description": "Collection of student academic and dream goals"
+    },
+    "/users/{userId}/routines/{routineId}": {
+      "schema": { "$ref": "#/entities/RoutineItem" },
+      "description": "Daily routines and scheduled study habits"
+    }
+  }
+}
