@@ -24,26 +24,21 @@ class DreamTrackApplication : Application() {
             Log.w(TAG, "Notification channel setup handled: ${e.message}")
         }
 
-        // 2. Initialize Firebase safely with fallback options if google-services.json is absent
+        // 2. Initialize Firebase safely if needed
         try {
             if (FirebaseApp.getApps(this).isEmpty()) {
-                val options = FirebaseOptions.Builder()
-                    .setApplicationId("1:408576089626:android:dreamtrack")
-                    .setProjectId("dreamtrack-study-hub")
-                    .setApiKey("AIzaSyFallbackKeyForLocalOfflineUse12345")
-                    .build()
-                FirebaseApp.initializeApp(this, options)
-                Log.d(TAG, "FirebaseApp initialized with fallback options")
+                FirebaseApp.initializeApp(this)
+                Log.d(TAG, "FirebaseApp initialized successfully")
             }
         } catch (e: Exception) {
             Log.w(TAG, "FirebaseApp initialization handled: ${e.message}")
         }
 
-        // 3. Setup default FCM topics safely
+        // 3. Setup default notification reminder alerts safely
         try {
             DreamFirebaseMessagingService.setupDefaultTopicSubscriptions()
         } catch (e: Exception) {
-            Log.w(TAG, "FCM Topic setup handled: ${e.message}")
+            Log.w(TAG, "Alert setup handled: ${e.message}")
         }
     }
 

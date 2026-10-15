@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.AiModelType
 import com.example.data.model.ChatMessage
 import com.example.data.model.StudentProfile
+import com.example.ui.components.GeminiLiveDialog
 import com.example.ui.theme.*
 
 @Composable
@@ -47,16 +48,20 @@ fun AiChatSection(
 ) {
     var inputText by remember { mutableStateOf("") }
     var showProblemSolverModal by remember { mutableStateOf(false) }
+    var showGeminiLiveDialog by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val clipboardManager = LocalClipboardManager.current
     var copiedMessageId by remember { mutableStateOf<String?>(null) }
 
     val quickPrompts = listOf(
+        "🎯 Create goal Machine Learning in AI & Tech",
+        "⏰ Create routine Morning Code at 07:00 AM",
+        "⏱️ Start focus session for 25 minutes",
+        "🛡️ Turn on distraction shield",
+        "⭐ Award 100 points for completing physics chapter",
+        "🌙 Switch to dark theme",
         "🧮 Solve a Math/Calculus problem",
-        "💻 Explain this code & debug error",
-        "🎯 How to study effectively for exams?",
-        "⚡ 30-Day sprint strategy for my dream",
-        "🧠 Break down a complex concept simply"
+        "💻 Explain this code & debug error"
     )
 
     LaunchedEffect(messages.size, isLoading) {
@@ -174,16 +179,30 @@ fun AiChatSection(
                         modifier = Modifier.weight(1f)
                     )
 
-                    Row {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Button(
+                            onClick = { showGeminiLiveDialog = true },
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = CyberCyan.copy(alpha = 0.9f)),
+                            modifier = Modifier.height(30.dp).testTag("gemini_live_launch_button")
+                        ) {
+                            Icon(imageVector = Icons.Default.GraphicEq, contentDescription = null, modifier = Modifier.size(13.dp), tint = Color.Black)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Live Voice", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = Color.Black)
+                        }
+
+                        Spacer(modifier = Modifier.width(6.dp))
+
                         OutlinedButton(
                             onClick = { showProblemSolverModal = true },
                             shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                             modifier = Modifier.height(30.dp).testTag("quick_problem_solve_button")
                         ) {
                             Icon(imageVector = Icons.Default.Calculate, contentDescription = null, modifier = Modifier.size(12.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Solve Problem", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Text("Solve", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                         }
 
                         if (messages.isNotEmpty()) {
@@ -405,6 +424,13 @@ fun AiChatSection(
             }
         )
     }
+
+    if (showGeminiLiveDialog) {
+        GeminiLiveDialog(
+            profile = profile,
+            onDismiss = { showGeminiLiveDialog = false }
+        )
+    }
 }
 
 @Composable
@@ -478,6 +504,36 @@ fun ChatBubble(
             modifier = Modifier.widthIn(max = 320.dp)
         ) {
             Column(modifier = Modifier.padding(14.dp)) {
+                if (message.aiAction != null) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = CyberCyan.copy(alpha = 0.2f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, CyberCyan.copy(alpha = 0.6f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = CyberCyan,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "⚡ Action Executed: ${message.aiAction.description}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = CyberCyan
+                            )
+                        }
+                    }
+                }
+
                 SelectionContainer {
                     Text(
                         text = message.text,

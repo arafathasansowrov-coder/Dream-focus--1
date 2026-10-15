@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -62,6 +63,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // Custom Instructions & Directives
     val customInstructions: StateFlow<List<CustomInstructionItem>>
+
+    // Gamification & Badges
+    val badgesList: StateFlow<List<BadgeItem>>
+    val leaderboard: StateFlow<List<LeaderboardEntry>>
 
     // App Connectors Hub
     private val _appConnectors = MutableStateFlow<List<AppConnectorItem>>(emptyList())
@@ -162,6 +167,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _activeDistractionBlocksCount = MutableStateFlow(3)
     val activeDistractionBlocksCount: StateFlow<Int> = _activeDistractionBlocksCount.asStateFlow()
 
+    // Gamification & Point System
+    private val _studentXp = MutableStateFlow(
+        prefs.getInt("PREF_STUDENT_XP", 480)
+    )
+    val studentXp: StateFlow<Int> = _studentXp.asStateFlow()
+
+    private val _isLeaderboardEnabled = MutableStateFlow(
+        prefs.getBoolean("PREF_LEADERBOARD_ENABLED", true)
+    )
+    val isLeaderboardEnabled: StateFlow<Boolean> = _isLeaderboardEnabled.asStateFlow()
+
+    private val _studentAvatarEmoji = MutableStateFlow(
+        prefs.getString("PREF_AVATAR_EMOJI", "🚀") ?: "🚀"
+    )
+    val studentAvatarEmoji: StateFlow<String> = _studentAvatarEmoji.asStateFlow()
+
+    private val _customPlayerTitle = MutableStateFlow(
+        prefs.getString("PREF_PLAYER_TITLE", "Visionary Architect") ?: "Visionary Architect"
+    )
+    val customPlayerTitle: StateFlow<String> = _customPlayerTitle.asStateFlow()
+
+    private val _recentlyUnlockedBadge = MutableStateFlow<BadgeItem?>(null)
+    val recentlyUnlockedBadge: StateFlow<BadgeItem?> = _recentlyUnlockedBadge.asStateFlow()
+
     private var timerJob: Job? = null
 
     init {
@@ -222,6 +251,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _appConnectors.value = repository.getDefaultAppConnectors()
         quotes = repository.getMotivationalQuotes()
 
+        badgesList = combine(_studentXp, profile) { xp, currentProfile ->
+            InitialBadgesList.createDefaultBadges(xp, currentProfile.currentStreak, currentProfile.completedMilestonesCount)
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+        leaderboard = combine(
+            _studentXp,
+            _studentAvatarEmoji,
+            profile,
+            _customPlayerTitle
+        ) { xp, avatar, currentProfile, title ->
+            generateLeaderboard(xp, avatar, currentProfile.name, title, currentProfile.currentStreak)
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
         // Start observing Firestore routines in real-time
         observeFirestoreRoutines()
     }
@@ -263,6 +305,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             repository.toggleRoutineCompletion(routine.id, isCompleted)
             if (isCompleted) {
                 repository.addFocusTime(routine.durationMinutes)
+                awardXp(StudentTaskPoints.DAILY_ROUTINE_DONE, "Completed: ${routine.title}")
             }
 
             // Sync to Firestore document
@@ -368,6 +411,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun updateGoalProgress(goalId: Long, progress: Int, isCompleted: Boolean = progress >= 100) {
         viewModelScope.launch {
             repository.updateGoalProgress(goalId, progress, isCompleted)
+            if (isCompleted) {
+                awardXp(StudentTaskPoints.GOAL_MILESTONE_DONE, "Goal Milestone achieved!")
+            }
         }
     }
 
@@ -592,9 +638,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val newProgress = (goal.progressPercentage + 5).coerceAtMost(100)
                     repository.updateGoalProgress(goal.id, newProgress, newProgress >= 100)
                 }
+                val points = if (loggedMinutes >= 45) StudentTaskPoints.FOCUS_SPRINT_50_MIN else StudentTaskPoints.FOCUS_SPRINT_25_MIN
+                awardXp(points, "Completed ${loggedMinutes}m focus sprint")
                 NotificationHelper.showMotivationNotification(
                     getApplication(),
-                    "🎉 Focus Session Completed!",
+                    "🎉 Focus Session Completed! (+$points XP)",
                     "You conquered ${loggedMinutes}m of deep work for your dream: ${profile.value.dreamTitle}!"
                 )
             }
@@ -709,6 +757,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             _isGeneratingAiResponse.value = true
+
+            // Check if user prompt is an AI App Command (create, changes, dismiss any app feature)
+            val (commandAction, commandResponse) = executeAiAppCommand(prompt)
+            if (commandAction != null && commandResponse != null) {
+                delay(400L) // natural processing pause
+                val aiMsg = ChatMessage(
+                    text = commandResponse,
+                    isUser = false,
+                    modelType = currentModel,
+                    aiAction = commandAction
+                )
+                _chatMessages.value = _chatMessages.value + aiMsg
+                _isGeneratingAiResponse.value = false
+                return@launch
+            }
+
             val result = GeminiClient.sendChatMessage(
                 history = _chatMessages.value.dropLast(1),
                 newPrompt = prompt,
@@ -919,7 +983,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (title.isBlank() || opinionText.isBlank()) return
         viewModelScope.launch {
             repository.insertJournalOpinion(title, opinionText, category, mood)
-            _aiActionFeedback.value = "✍️ Reflection & Opinion saved to your Journal!"
+            awardXp(StudentTaskPoints.JOURNAL_OPINION_LOGGED, "Journal reflection written")
+            _aiActionFeedback.value = "✍️ Reflection & Opinion saved to your Journal! (+${StudentTaskPoints.JOURNAL_OPINION_LOGGED} XP)"
         }
     }
 
@@ -987,7 +1052,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             DreamFirebaseMessagingService.TOPIC_DAILY_MOTIVATION,
             enabled
         )
-        _aiActionFeedback.value = if (enabled) "⚡ Daily Motivational FCM Alerts Enabled" else "🔕 Motivational Alerts Muted"
+        _aiActionFeedback.value = if (enabled) "⚡ Daily Motivational Alerts Enabled" else "🔕 Motivational Alerts Muted"
     }
 
     fun toggleStudyAlertsFcm(enabled: Boolean) {
@@ -1003,10 +1068,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val quote = quotes.randomOrNull()?.quote ?: "The secret of getting ahead is getting started."
         NotificationHelper.showMotivationNotification(
             context = getApplication(),
-            title = "🔥 Daily Dream Fuel (FCM Test)",
+            title = "🔥 Daily Dream Fuel",
             message = quote
         )
-        _aiActionFeedback.value = "🚀 Test FCM Motivation Alert sent!"
+        _aiActionFeedback.value = "🚀 Motivational Study Alert sent!"
     }
 
     fun triggerTestStudyAlert() {
@@ -1036,8 +1101,272 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         setThemeMode(nextMode)
     }
 
+    // ==========================================
+    // GAMIFICATION & POINT SYSTEM CONTROLS
+    // ==========================================
+
+    fun awardXp(points: Int, reason: String) {
+        val newXp = _studentXp.value + points
+        _studentXp.value = newXp
+        prefs.edit().putInt("PREF_STUDENT_XP", newXp).apply()
+        _aiActionFeedback.value = "⭐ +$points XP earned: $reason! (Total: $newXp XP)"
+
+        // Check for unlockable badges
+        val badges = InitialBadgesList.createDefaultBadges(
+            currentXp = newXp,
+            currentStreak = profile.value.currentStreak,
+            completedMilestones = profile.value.completedMilestonesCount
+        )
+        val justUnlocked = badges.firstOrNull { it.requiredXp in (_studentXp.value - points + 1)..newXp }
+        if (justUnlocked != null) {
+            _recentlyUnlockedBadge.value = justUnlocked
+            NotificationHelper.showMotivationNotification(
+                context = getApplication(),
+                title = "🏆 Achievement Unlocked: ${justUnlocked.title}!",
+                message = "${justUnlocked.emoji} ${justUnlocked.description}"
+            )
+        }
+    }
+
+    fun toggleLeaderboard(enabled: Boolean) {
+        _isLeaderboardEnabled.value = enabled
+        prefs.edit().putBoolean("PREF_LEADERBOARD_ENABLED", enabled).apply()
+        _aiActionFeedback.value = if (enabled) "🏆 Global Leaderboard Active!" else "🔒 Leaderboard set to Private Solo Focus."
+    }
+
+    fun setStudentAvatarEmoji(emoji: String) {
+        _studentAvatarEmoji.value = emoji
+        prefs.edit().putString("PREF_AVATAR_EMOJI", emoji).apply()
+        _aiActionFeedback.value = "Avatar updated to $emoji"
+    }
+
+    fun setCustomPlayerTitle(title: String) {
+        _customPlayerTitle.value = title
+        prefs.edit().putString("PREF_PLAYER_TITLE", title).apply()
+        _aiActionFeedback.value = "Player Rank Title set to $title"
+    }
+
+    fun dismissUnlockedBadge() {
+        _recentlyUnlockedBadge.value = null
+    }
+
+    private fun generateLeaderboard(
+        userXp: Int,
+        userAvatar: String,
+        userName: String,
+        userTitle: String,
+        userStreak: Int
+    ): List<LeaderboardEntry> {
+        val peers = listOf(
+            LeaderboardEntry(1, "Sophia Chen", "Biomedical Neural AI", 2450, 24, 8, "🧬"),
+            LeaderboardEntry(2, "Leo Martinez", "Quantum Cryptographer", 1920, 19, 7, "⚡"),
+            LeaderboardEntry(3, "Arafat Hasan", "Autonomous Robotics Lead", 1680, 15, 6, "🤖"),
+            LeaderboardEntry(4, "Priya Sharma", "Astrophysics Researcher", 1350, 14, 5, "🌌"),
+            LeaderboardEntry(5, "Alex Vance", "Full-Stack Neurotechnology", 980, 10, 4, "💻"),
+            LeaderboardEntry(6, "Elena Rostova", "Cognitive Neuroscience", 720, 8, 3, "🧠"),
+            LeaderboardEntry(7, "Marcus Aurelius", "Philosophical Strategist", 540, 6, 2, "🏛️")
+        )
+
+        val currentUserEntry = LeaderboardEntry(
+            rank = 0,
+            studentName = if (userName.isBlank()) "You (Student Leader)" else "$userName (You)",
+            dreamGoal = userTitle,
+            totalPoints = userXp,
+            streakDays = userStreak,
+            badgesCount = InitialBadgesList.createDefaultBadges(userXp, userStreak, 10).count { it.isUnlocked },
+            avatarEmoji = userAvatar,
+            isCurrentUser = true
+        )
+
+        val combined = (peers + currentUserEntry).sortedByDescending { it.totalPoints }
+        return combined.mapIndexed { index, entry ->
+            entry.copy(rank = index + 1)
+        }
+    }
+
+    // ==========================================
+    // AI APP COMMAND ENGINE & AUTONOMOUS ACCESS
+    // ==========================================
+
+    fun executeAiAppCommand(prompt: String): Pair<AiAppAction?, String?> {
+        val lower = prompt.trim().lowercase()
+
+        // 1. Goal creation
+        if (lower.startsWith("create goal") || lower.startsWith("add goal") || lower.startsWith("new goal") || lower.startsWith("make goal")) {
+            val content = prompt.substringAfter("goal", "").trim()
+            val category = when {
+                lower.contains("tech") || lower.contains("ai") || lower.contains("code") -> "AI & Tech"
+                lower.contains("academic") || lower.contains("math") || lower.contains("exam") -> "Academics"
+                lower.contains("content") || lower.contains("youtube") -> "Content Creation"
+                lower.contains("skill") -> "Skills"
+                else -> "AI & Tech"
+            }
+            val title = content.ifBlank { "Master High-Impact Study Goal" }
+            addGoal(
+                title = title,
+                category = category,
+                priority = "High",
+                deadline = "2026-12-31",
+                milestones = listOf("Phase 1: Foundations & Core Concepts", "Phase 2: Practice & Projects", "Phase 3: Deep Mastery")
+            )
+            awardXp(StudentTaskPoints.GOAL_QUEST_LEVEL_UP, "Created goal via AI: $title")
+            return Pair(
+                AiAppAction.CreateGoal(title, category),
+                "🎯 **Goal Created Successfully!**\n\nTitle: **$title**\nCategory: **$category**\nReward: **+${StudentTaskPoints.GOAL_QUEST_LEVEL_UP} XP** added to your profile! You can now track its milestone quests in the Dream Goals tab."
+            )
+        }
+
+        // 2. Routine creation
+        if (lower.startsWith("create routine") || lower.startsWith("add routine") || lower.startsWith("new habit") || lower.startsWith("schedule routine") || lower.startsWith("set routine")) {
+            val content = prompt.substringAfter("routine", "").ifBlank { prompt.substringAfter("habit", "") }.trim()
+            val time = if (lower.contains("at ")) {
+                prompt.substringAfter("at ", "08:00 AM").trim()
+            } else "08:00 AM"
+            val title = if (content.contains("at ")) content.substringBefore("at ").trim() else content.ifBlank { "Focused Morning Study" }
+            val category = if (lower.contains("code") || lower.contains("math") || lower.contains("algorithm")) "Coding" else "Deep Work"
+            saveRoutineToFirestore(
+                title = title,
+                time = time,
+                category = category,
+                durationMinutes = 45,
+                alarmEnabled = true
+            )
+            awardXp(StudentTaskPoints.DAILY_ROUTINE_DONE, "Scheduled routine via AI Command")
+            return Pair(
+                AiAppAction.CreateRoutine(title, time, category),
+                "⏰ **Study Routine Scheduled!**\n\nTitle: **$title**\nTime: **$time**\nCategory: **$category**\nAlarms: **Armed & Active** (+${StudentTaskPoints.DAILY_ROUTINE_DONE} XP)"
+            )
+        }
+
+        // 3. Focus Timer controls
+        if (lower.contains("start focus") || lower.contains("start timer") || lower.contains("pomodoro") || lower.contains("begin focus") || lower.contains("start session")) {
+            val minutesRegex = Regex("(\\d+)\\s*(?:min|minute)")
+            val match = minutesRegex.find(lower)
+            val minutes = match?.groupValues?.get(1)?.toIntOrNull() ?: 25
+            setFocusDuration(minutes)
+            startFocusTimer()
+            return Pair(
+                AiAppAction.StartFocusTimer(minutes),
+                "⏱️ **Focus Sprint Activated!**\n\nDuration: **$minutes minutes**\nStatus: **Running in Background**\nStay dialed in! Completing this session will earn you **+${StudentTaskPoints.FOCUS_SPRINT_25_MIN} XP**."
+            )
+        }
+
+        if (lower.contains("stop timer") || lower.contains("pause timer") || lower.contains("stop focus") || lower.contains("cancel timer")) {
+            pauseFocusTimer()
+            return Pair(
+                AiAppAction.StopFocusTimer("Paused via AI Command"),
+                "⏸️ **Focus Timer Paused.** Take a breath and resume when ready."
+            )
+        }
+
+        if (lower.contains("reset timer")) {
+            resetFocusTimer()
+            return Pair(
+                AiAppAction.DismissFeature("Focus Timer Reset"),
+                "🔄 **Focus Timer has been reset** to standard 25 minutes."
+            )
+        }
+
+        // 4. Focus Shield toggle
+        if (lower.contains("turn on shield") || lower.contains("enable shield") || lower.contains("activate shield") || lower.contains("shield on")) {
+            startDistractionShield()
+            awardXp(StudentTaskPoints.DISTRACTION_SHIELD_DEFENSE, "Activated Distraction Shield")
+            return Pair(
+                AiAppAction.ToggleFocusShield(true),
+                "🛡️ **Distraction Shield Activated!**\n\nBackground monitor is now guarding against social media & blacklisted apps. (+${StudentTaskPoints.DISTRACTION_SHIELD_DEFENSE} XP)"
+            )
+        }
+
+        if (lower.contains("turn off shield") || lower.contains("disable shield") || lower.contains("deactivate shield") || lower.contains("shield off")) {
+            stopDistractionShield()
+            return Pair(
+                AiAppAction.ToggleFocusShield(false),
+                "🔓 **Distraction Shield Deactivated.** Monitored background protection is turned off."
+            )
+        }
+
+        // 5. Theme switching
+        if (lower.contains("dark theme") || lower.contains("dark mode")) {
+            setThemeMode(ThemeMode.DARK)
+            return Pair(
+                AiAppAction.SwitchTheme("Dark Mode"),
+                "🌙 **Theme switched to Dark Mode.** High-contrast cyberpunk palette applied."
+            )
+        }
+        if (lower.contains("light theme") || lower.contains("light mode")) {
+            setThemeMode(ThemeMode.LIGHT)
+            return Pair(
+                AiAppAction.SwitchTheme("Light Mode"),
+                "☀️ **Theme switched to Light Mode.** Clean high-contrast view."
+            )
+        }
+        if (lower.contains("system theme") || lower.contains("auto theme")) {
+            setThemeMode(ThemeMode.SYSTEM)
+            return Pair(
+                AiAppAction.SwitchTheme("System Default"),
+                "🌓 **Theme set to System Default.**"
+            )
+        }
+
+        // 6. Award Points / Add XP
+        if (lower.contains("award points") || lower.contains("give me points") || lower.contains("add xp") || lower.contains("reward points") || lower.contains("award xp")) {
+            val numRegex = Regex("(\\d+)")
+            val points = numRegex.find(lower)?.groupValues?.get(1)?.toIntOrNull() ?: 100
+            val reason = if (lower.contains("for ")) lower.substringAfter("for ") else "Task achievement"
+            awardXp(points, reason)
+            return Pair(
+                AiAppAction.AwardPoints(points, reason),
+                "⭐ **+$points XP Granted!**\n\nReason: **$reason**\nYour leaderboard standing has been updated."
+            )
+        }
+
+        // 7. Dream Career update
+        if (lower.startsWith("change dream") || lower.startsWith("set dream") || lower.startsWith("my dream is") || lower.startsWith("update dream")) {
+            val newTitle = prompt.substringAfter("dream", "").replace("is", "").replace("to", "").trim().ifBlank { "Autonomous Systems Researcher" }
+            updateProfile(
+                name = profile.value.name,
+                dreamTitle = newTitle,
+                dreamDesc = profile.value.dreamDescription,
+                targetYear = profile.value.targetYear,
+                dailyHours = profile.value.dailyTargetHours
+            )
+            return Pair(
+                AiAppAction.SetDreamCareer(newTitle),
+                "🚀 **Dream Career Updated!**\n\nYour primary mission is now: **$newTitle**."
+            )
+        }
+
+        // 8. Leaderboard toggle
+        if (lower.contains("enable leaderboard") || lower.contains("show leaderboard") || lower.contains("turn on leaderboard")) {
+            toggleLeaderboard(true)
+            return Pair(
+                AiAppAction.ToggleLeaderboard(true),
+                "🏆 **Leaderboard Enabled!** You are now participating in peer rankings."
+            )
+        }
+        if (lower.contains("disable leaderboard") || lower.contains("hide leaderboard") || lower.contains("turn off leaderboard")) {
+            toggleLeaderboard(false)
+            return Pair(
+                AiAppAction.ToggleLeaderboard(false),
+                "🔒 **Leaderboard Muted.** App set to private solo focus mode."
+            )
+        }
+
+        // 9. Clear Chat
+        if (lower == "clear chat" || lower == "reset chat" || lower == "dismiss chat") {
+            clearChat()
+            return Pair(
+                AiAppAction.DismissFeature("Chat History"),
+                "🧹 **Chat history cleared.** What can I do for you next?"
+            )
+        }
+
+        return Pair(null, null)
+    }
+
     fun dismissFeedback() {
         _aiActionFeedback.value = null
     }
 }
+
 

@@ -47,6 +47,12 @@ fun DashboardScreen(
     onToggleAlarm: (RoutineItem) -> Unit,
     onEditProfile: () -> Unit,
     onQuoteClick: (MotivationQuote) -> Unit,
+    studentXp: Int = 480,
+    avatarEmoji: String = "🚀",
+    playerTitle: String = "Visionary Architect",
+    unlockedBadgesCount: Int = 3,
+    userRank: Int = 3,
+    onOpenGamification: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val todaysQuote = remember(quotes) { quotes.firstOrNull() ?: MotivationQuote(1, "Focus creates reality.", "Anonymous", "Focus", "") }
@@ -67,6 +73,94 @@ fun DashboardScreen(
                 profile = profile,
                 onEditProfileClick = onEditProfile
             )
+        }
+
+        // Gamification Rank & Trophies Card
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onOpenGamification() }
+                    .testTag("dashboard_gamification_card"),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                border = androidx.compose.foundation.BorderStroke(1.dp, AmberGold.copy(alpha = 0.5f))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.linearGradient(
+                                listOf(
+                                    AmberGold.copy(alpha = 0.12f),
+                                    ElectricIndigo.copy(alpha = 0.08f),
+                                    Color.Transparent
+                                )
+                            )
+                        )
+                        .padding(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = CircleShape,
+                                color = AmberGold.copy(alpha = 0.25f),
+                                modifier = Modifier.size(46.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(text = avatarEmoji, fontSize = 24.sp)
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "$studentXp XP",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = AmberGold
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = ElectricIndigo.copy(alpha = 0.2f)
+                                    ) {
+                                        Text(
+                                            text = "Rank #$userRank",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = ElectricIndigo,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = playerTitle,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "🏅 $unlockedBadgesCount / 8 Badges • Tap to view Leaderboard",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Icon(
+                            imageVector = Icons.Default.EmojiEvents,
+                            contentDescription = "Leaderboard & Badges",
+                            tint = AmberGold,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
+            }
         }
 
         // Recharts-inspired Weekly Productivity Summary Data Visualization

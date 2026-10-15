@@ -1,6 +1,7 @@
 package com.example.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
@@ -18,7 +19,10 @@ import com.example.ui.components.DistractionAlertModal
 import com.example.ui.components.DistractionBlockedDialog
 import com.example.ui.components.EditProfileDialog
 import com.example.ui.components.GamifiedGoalCompleter
+import com.example.ui.components.GamificationLeaderboardModal
+import com.example.ui.components.CustomizationCenterModal
 import com.example.ui.screens.*
+import com.example.ui.theme.AmberGold
 import com.example.ui.theme.CyberCyan
 import com.example.ui.theme.ElectricIndigo
 import com.example.ui.viewmodel.MainViewModel
@@ -51,6 +55,16 @@ fun MainApp(
     var initialAiTab by remember { mutableStateOf(AiHubTab.CHAT) }
     var goalsShieldSubTab by remember { mutableStateOf(GoalsShieldSubTab.GOALS) }
     var showEditProfileDialog by remember { mutableStateOf(false) }
+    var showGamificationModal by remember { mutableStateOf(false) }
+    var showCustomizationModal by remember { mutableStateOf(false) }
+
+    val studentXp by viewModel.studentXp.collectAsStateWithLifecycle()
+    val isLeaderboardEnabled by viewModel.isLeaderboardEnabled.collectAsStateWithLifecycle()
+    val studentAvatarEmoji by viewModel.studentAvatarEmoji.collectAsStateWithLifecycle()
+    val customPlayerTitle by viewModel.customPlayerTitle.collectAsStateWithLifecycle()
+    val badgesList by viewModel.badgesList.collectAsStateWithLifecycle()
+    val leaderboard by viewModel.leaderboard.collectAsStateWithLifecycle()
+    val recentlyUnlockedBadge by viewModel.recentlyUnlockedBadge.collectAsStateWithLifecycle()
 
     val profile by viewModel.profile.collectAsStateWithLifecycle()
     val goals by viewModel.goals.collectAsStateWithLifecycle()
@@ -126,6 +140,31 @@ fun MainApp(
                     }
                 },
                 actions = {
+                    // Gamification & Leaderboard Trophy Button
+                    FilledTonalButton(
+                        onClick = { showGamificationModal = true },
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = AmberGold.copy(alpha = 0.2f)),
+                        modifier = Modifier
+                            .height(32.dp)
+                            .testTag("top_bar_gamification_button")
+                    ) {
+                        Text(text = "👑 $studentXp", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = AmberGold)
+                    }
+
+                    // Customization Center Button
+                    IconButton(
+                        onClick = { showCustomizationModal = true },
+                        modifier = Modifier.testTag("top_bar_customization_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Palette,
+                            contentDescription = "Customization Center",
+                            tint = ElectricIndigo
+                        )
+                    }
+
                     IconButton(
                         onClick = { viewModel.toggleThemeMode() },
                         modifier = Modifier.testTag("top_bar_theme_toggle_button")
@@ -227,7 +266,13 @@ fun MainApp(
                         onToggleRoutine = { viewModel.toggleFirestoreRoutineCompletion(it, !it.isCompletedToday) },
                         onToggleAlarm = { viewModel.toggleRoutineAlarm(it) },
                         onEditProfile = { showEditProfileDialog = true },
-                        onQuoteClick = { viewModel.triggerMotivationAlert(it) }
+                        onQuoteClick = { viewModel.triggerMotivationAlert(it) },
+                        studentXp = studentXp,
+                        avatarEmoji = studentAvatarEmoji,
+                        playerTitle = customPlayerTitle,
+                        unlockedBadgesCount = badgesList.count { it.isUnlocked },
+                        userRank = leaderboard.firstOrNull { it.isCurrentUser }?.rank ?: 3,
+                        onOpenGamification = { showGamificationModal = true }
                     )
                 }
                 NavigationTab.AI_STUDY -> {
@@ -432,6 +477,35 @@ fun MainApp(
                         viewModel.updateProfile(name, dream, desc, year, hours)
                         showEditProfileDialog = false
                     }
+                )
+            }
+
+            // Gamification, Badges & Leaderboard Modal
+            if (showGamificationModal) {
+                GamificationLeaderboardModal(
+                    totalXp = studentXp,
+                    profile = profile,
+                    badges = badgesList,
+                    leaderboardEntries = leaderboard,
+                    isLeaderboardEnabled = isLeaderboardEnabled,
+                    onToggleLeaderboard = { viewModel.toggleLeaderboard(it) },
+                    onDismiss = { showGamificationModal = false }
+                )
+            }
+
+            // Customization Center Modal
+            if (showCustomizationModal) {
+                CustomizationCenterModal(
+                    themeMode = themeMode,
+                    onSetThemeMode = { viewModel.setThemeMode(it) },
+                    currentAvatarEmoji = studentAvatarEmoji,
+                    onSetAvatarEmoji = { viewModel.setStudentAvatarEmoji(it) },
+                    currentPlayerTitle = customPlayerTitle,
+                    onSetPlayerTitle = { viewModel.setCustomPlayerTitle(it) },
+                    isLeaderboardEnabled = isLeaderboardEnabled,
+                    onToggleLeaderboard = { viewModel.toggleLeaderboard(it) },
+                    onExecuteAiCommand = { viewModel.sendChatMessage(it) },
+                    onDismiss = { showCustomizationModal = false }
                 )
             }
         }

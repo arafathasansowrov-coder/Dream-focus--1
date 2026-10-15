@@ -41,7 +41,8 @@ data class ChatMessage(
     val timestamp: Long = System.currentTimeMillis(),
     val isError: Boolean = false,
     val studyPlan: GeneratedStudyPlan? = null,
-    val modelType: AiModelType = AiModelType.GEMINI
+    val modelType: AiModelType = AiModelType.GEMINI,
+    val aiAction: AiAppAction? = null
 )
 
 /**
